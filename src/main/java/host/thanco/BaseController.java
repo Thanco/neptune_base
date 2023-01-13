@@ -15,7 +15,7 @@ import com.corundumstudio.socketio.listener.DataListener;
 
 public class BaseController {
 
-    private static final String VERSION = "0.8.5";
+    private static final String VERSION = "0.8.5.1";
 
     private static final String CHAT_MESSAGE = "chatMessage";
     private static final String IMAGE = "image";
