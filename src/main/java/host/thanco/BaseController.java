@@ -1,5 +1,9 @@
 package host.thanco;
 
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
 import com.corundumstudio.socketio.AckCallback;
 
 import com.corundumstudio.socketio.AckRequest;
@@ -141,11 +145,18 @@ public class BaseController {
                 client.sendEvent(CHAT_MESSAGE, chatItem);
                     break;
                 case 'i':
-                    client.sendEvent(IMAGE, new AckCallback<>(Character.class, 30) {
-                        public void onSuccess(Character arg0) {
-                            System.out.println("New client successfully recieved image");
-                        };
-                    }, chatItem);
+                    try {
+                        File newFile = new File("img/" + chatItem.getItemIndex() + ".png");
+                        byte[] bytes = Files.readAllBytes(newFile.toPath());
+                        chatItem.setContent(bytes);
+                        client.sendEvent(IMAGE, new AckCallback<>(Character.class, 30) {
+                            public void onSuccess(Character arg0) {
+                                System.out.println("New client successfully recieved image");
+                            };
+                        }, chatItem);
+                    } catch (Exception e) {
+                        // TODO: handle exception
+                    }
                     break;
                 default:
                     break;
