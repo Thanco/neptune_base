@@ -38,6 +38,13 @@ public class BaseArrayList implements BaseDatabase {
         imgFile.mkdirs();
     }
 
+    public void saveList() {
+        if (!new File("json/databaseStore.json").exists()) {
+            new File("json/databaseStore.json").mkdirs();
+        };
+        
+    }
+
     @Override
     public ArrayList<ChatItem> getMessageList() {
         return messageList;
@@ -74,6 +81,7 @@ public class BaseArrayList implements BaseDatabase {
                 FileOutputStream out = new FileOutputStream(newFile);
                 out.write((byte[]) item.getContent());
                 out.close();
+                item.setContent(newFileName);
             } catch (Exception e) {
                 e.printStackTrace();
             }

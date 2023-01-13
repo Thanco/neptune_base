@@ -17,4 +17,5 @@ public interface BaseDatabase {
     public ArrayList<String> getCurrentUsers();
     public String getClientUsername(SocketIOClient client);
     public int getNextIndex();
+    public void saveList();
 }
