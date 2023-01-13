@@ -121,7 +121,7 @@ public class BaseController {
 
         ui.launchUI(args);
 
-        ui.printMessage(new ChatItem(-1, "System", 't', server.getConfiguration().getHostname() + ":" + server.getConfiguration().getPort() + " v" + VERSION));
+        ui.printMessage(new ChatItem(-1, "System", 't', server.getConfiguration().getHostname() + ":" + server.getConfiguration().getPort() + "  v" + VERSION));
 
         // while (true) {
         //     try {
