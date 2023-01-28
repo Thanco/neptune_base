@@ -4,6 +4,27 @@ public class BaseCLI implements BaseUI {
     @Override
     public void launchUI(String[] args) {
         System.out.println("Neptune Base CLI successfully started...");
+        // Thread exitChecker = new Thread(new Runnable() {
+        //     @Override
+        //     public void run() {
+        //         Scanner in = new Scanner(System.in);
+        //         while (!in.nextLine().toLowerCase().equals("exit")) {
+        //             continue;
+        //         }
+        //         in.close();
+        //         BaseDatabase.getInstance().saveList();
+        //         System.exit(0);
+        //     }
+        // });
+        // exitChecker.setDaemon(true);
+        // exitChecker.setName("Exit Check");
+        // exitChecker.start();
+        Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
+            @Override
+            public void run() {
+                BaseDatabase.getInstance().saveList();
+            }
+        }));
     }
 
     @Override

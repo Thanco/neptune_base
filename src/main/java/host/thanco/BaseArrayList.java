@@ -4,15 +4,22 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
 import java.util.ArrayList;
 import java.util.Collections;
 
 import com.corundumstudio.socketio.SocketIOClient;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 
 public class BaseArrayList implements BaseDatabase {
     private static final int RECENTS_SIZE = 15;
+
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     private static BaseArrayList instance;
     private ArrayList<ChatItem> messageList;
@@ -31,18 +38,47 @@ public class BaseArrayList implements BaseDatabase {
     }
 
     public void initDatabase() {
-        currentItemIndex = 0;
-        messageList = new ArrayList<>();
+        String databasePath = "json/databaseStore.json";
+        if (!new File(databasePath).exists()) {
+            try {
+                new File(databasePath).createNewFile();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+        try (FileReader reader = new FileReader(databasePath)) {
+            ChatItem[] chatArr = GSON.fromJson(reader, ChatItem[].class);
+            messageList = new ArrayList<>();
+            if (chatArr != null) {
+                Collections.addAll(messageList, chatArr);
+                currentItemIndex = messageList.get(messageList.size() - 1).getItemIndex() + 1;
+                Collections.sort(messageList);
+            } else {
+                currentItemIndex = 0;
+            }
+        } catch(Exception e) {
+            e.printStackTrace();
+        }
         currentUsers = new ArrayList<>();
         File imgFile = new File("img/");
         imgFile.mkdirs();
     }
 
     public void saveList() {
+        String databasePath = "json/databaseStore.json";
         if (!new File("json/databaseStore.json").exists()) {
-            new File("json/databaseStore.json").mkdirs();
+            try {
+                new File("json/").mkdirs();
+                new File("json/databaseStore.json").createNewFile();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         };
-        
+        try (OutputStreamWriter writer = new OutputStreamWriter(new FileOutputStream(databasePath))) {
+            GSON.toJson(messageList, writer);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }        
     }
 
     @Override
@@ -75,18 +111,22 @@ public class BaseArrayList implements BaseDatabase {
 
     public void store(ChatItem item) {
         if (item.getType() == 'i') {
+            ChatItem newItem;
             try {
                 String newFileName = "img/" + item.getItemIndex() + ".png";
                 File newFile = new File(newFileName);
                 FileOutputStream out = new FileOutputStream(newFile);
                 out.write((byte[]) item.getContent());
                 out.close();
-                item.setContent(newFileName);
+                newItem = new ChatItem(item.getItemIndex(), item.getUserName(), item.getType(), newFileName);
+                messageList.add(newItem);
             } catch (Exception e) {
                 e.printStackTrace();
             }
+            return;
         }
         messageList.add(item);
+        Collections.sort(messageList);
     }
 
     public int getNextIndex() {

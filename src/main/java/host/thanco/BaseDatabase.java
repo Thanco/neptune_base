@@ -5,8 +5,12 @@ import java.util.ArrayList;
 import com.corundumstudio.socketio.SocketIOClient;
 
 public interface BaseDatabase {
+    final static BaseDatabase instance = getInstance();
     public static BaseDatabase getInstance() {
-        return BaseArrayList.getInstance();
+        if (instance == null) {
+            return BaseArrayList.getInstance();
+        }
+        return instance;
     }
     public void initDatabase();
     public void store(ChatItem message);

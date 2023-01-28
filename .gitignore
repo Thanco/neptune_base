@@ -27,3 +27,5 @@ img/
 
 *.cmd
 *.ps1
+
+json/

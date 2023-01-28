@@ -1,6 +1,6 @@
 package host.thanco;
 
-public class ChatItem {
+public class ChatItem implements Comparable<ChatItem> {
     private int itemIndex;
     private String userName;
     private char type;
@@ -47,6 +47,11 @@ public class ChatItem {
 
     public void setItemIndex(int itemIndex) {
         this.itemIndex = itemIndex;
+    }
+
+    @Override
+    public int compareTo(ChatItem item) {
+        return itemIndex - item.getItemIndex();
     }
 
 }

@@ -2,7 +2,6 @@ package host.thanco;
 
 import java.io.File;
 import java.nio.file.Files;
-import java.nio.file.Path;
 
 import com.corundumstudio.socketio.AckCallback;
 
@@ -15,7 +14,7 @@ import com.corundumstudio.socketio.listener.DataListener;
 
 public class BaseController {
 
-    private static final String VERSION = "0.8.5.1";
+    private static final String VERSION = "0.8.5.2";
 
     private static final String CHAT_MESSAGE = "chatMessage";
     private static final String IMAGE = "image";
@@ -35,6 +34,7 @@ public class BaseController {
 
         Configuration config = new Configuration();
         // config.setHostname("192.168.1.129");
+        // config.setHostname("192.168.1.131");
         // config.setHostname("192.168.137.87");
         // config.setHostname("172.20.4.20");
         // config.setHostname("10.144.119.73");
@@ -92,7 +92,6 @@ public class BaseController {
             @Override
             public void onData(SocketIOClient client, byte[] bytes, AckRequest ackRequest) throws Exception {
                 ChatItem newImage = new ChatItem(database.getNextIndex(), database.getClientUsername(client), 'i', bytes);
-                database.store(newImage);
                 System.out.println("newImage");
                 server.getBroadcastOperations().sendEvent(IMAGE, newImage, new BroadcastAckCallback<>(Character.class, 30) {
                     protected void onAllSuccess() {
@@ -113,6 +112,7 @@ public class BaseController {
                         }, newImage);
                     };
                 });
+                database.store(newImage);
             }
         });
         server.addEventListener(USER_TYPING, String.class, new DataListener<String>() {
@@ -126,14 +126,6 @@ public class BaseController {
         ui.launchUI(args);
 
         ui.printMessage(new ChatItem(-1, "System", 't', server.getConfiguration().getHostname() + ":" + server.getConfiguration().getPort() + "  v" + VERSION));
-
-        // while (true) {
-        //     try {
-        //         Thread.sleep(Integer.MAX_VALUE);
-        //     } catch (InterruptedException e) {
-        //         e.printStackTrace();
-        //     }
-        // }
     }
 
     private static void clientConnected(SocketIOClient client) {
@@ -146,14 +138,15 @@ public class BaseController {
                     break;
                 case 'i':
                     try {
-                        File newFile = new File("img/" + chatItem.getItemIndex() + ".png");
+                        String imgPath = (String) chatItem.getContent();
+                        File newFile = new File(imgPath);
                         byte[] bytes = Files.readAllBytes(newFile.toPath());
-                        chatItem.setContent(bytes);
+                        ChatItem newItem = new ChatItem(chatItem.getItemIndex(), chatItem.getUserName(), chatItem.getType(), bytes);
                         client.sendEvent(IMAGE, new AckCallback<>(Character.class, 30) {
                             public void onSuccess(Character arg0) {
                                 System.out.println("New client successfully recieved image");
                             };
-                        }, chatItem);
+                        }, newItem);
                     } catch (Exception e) {
                         // TODO: handle exception
                     }
