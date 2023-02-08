@@ -133,17 +133,22 @@ public class BaseArrayList implements BaseDatabase {
         return currentItemIndex++;
     }
 
-    // public ArrayList<ChatMessage> getRecents() {
-    //     int arrLength = Math.min(RECENTS_SIZE, messageList.size());
-    //     ArrayList<ChatMessage> temp = new ArrayList<>();
-    //     for (int i = messageList.size(); i > messageList.size() - arrLength; i--) {
-    //         temp.add(messageList.get(i - 1));
-    //     }
-    //     Collections.reverse(temp);
-    //     return temp;
-    // }
-
     public ArrayList<ChatItem> getRecents() {
-        return messageList;
+        int arrLength = Math.min(RECENTS_SIZE, messageList.size());
+        ArrayList<ChatItem> temp = new ArrayList<>();
+        for (int i = messageList.size(); i > messageList.size() - arrLength; i--) {
+            temp.add(messageList.get(i - 1));
+        }
+        Collections.reverse(temp);
+        return temp;
+    }
+
+    public ArrayList<ChatItem> getRecents(int oldestMessage) {
+        ArrayList<ChatItem> temp = new ArrayList<>();
+        for (int i = oldestMessage; i > 0 && i > oldestMessage - RECENTS_SIZE; i--) {
+            temp.add(messageList.get(i - 1));
+        }
+        Collections.reverse(temp);
+        return temp;
     }
 }

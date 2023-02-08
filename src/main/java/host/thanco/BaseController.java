@@ -14,7 +14,7 @@ import com.corundumstudio.socketio.listener.DataListener;
 
 public class BaseController {
 
-    private static final String VERSION = "0.8.5.2";
+    private static final String VERSION = "0.8.6.0";
 
     private static final String CHAT_MESSAGE = "chatMessage";
     private static final String IMAGE = "image";
@@ -24,6 +24,7 @@ public class BaseController {
     private static final String USER_JOIN = "userJoin";
     private static final String USER_LEAVE = "userLeave";
     private static final String USER_TYPING = "userTyping";
+    private static final String MESSAGE_REQUEST = "messageRequest";
 
     private static BaseDatabase database = BaseDatabase.getInstance();
     private static BaseUI ui = new BaseCLI();
@@ -120,6 +121,11 @@ public class BaseController {
                 server.getBroadcastOperations().sendEvent(USER_TYPING, database.getClientUsername(client));
             };
         });
+        server.addEventListener(MESSAGE_REQUEST, Integer.class, new DataListener<Integer>() {
+            public void onData(SocketIOClient client, Integer oldestMessage, AckRequest ackRequest) throws Exception {
+                sendMessages(client, oldestMessage);
+            }
+        });
 
         server.start();
 
@@ -162,4 +168,31 @@ public class BaseController {
         server.getBroadcastOperations().sendEvent(USER_LEAVE, database.getClientUsername(client));
         database.removeClient(database.getClientUsername(client));
     }
+
+    private static void sendMessages(SocketIOClient client, Integer oldestMessage) {
+        for (ChatItem chatItem : database.getRecents(oldestMessage)) {
+            switch (chatItem.getType()) {
+                case 't':
+                client.sendEvent(CHAT_MESSAGE, chatItem);
+                    break;
+                case 'i':
+                    try {
+                        String imgPath = (String) chatItem.getContent();
+                        File newFile = new File(imgPath);
+                        byte[] bytes = Files.readAllBytes(newFile.toPath());
+                        ChatItem newItem = new ChatItem(chatItem.getItemIndex(), chatItem.getUserName(), chatItem.getType(), bytes);
+                        client.sendEvent(IMAGE, new AckCallback<>(Character.class, 30) {
+                            public void onSuccess(Character arg0) {
+                                System.out.println("New client successfully recieved image");
+                            };
+                        }, newItem);
+                    } catch (Exception e) {
+                        // TODO: handle exception
+                    }
+                    break;
+                default:
+                    break;
+            }
+        }
+    };
 }

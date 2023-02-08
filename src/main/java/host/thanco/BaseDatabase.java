@@ -16,6 +16,7 @@ public interface BaseDatabase {
     public void store(ChatItem message);
     public ArrayList<ChatItem> getMessageList();
     public ArrayList<ChatItem> getRecents();
+    public ArrayList<ChatItem> getRecents(int oldestMessage);
     public void addClient(SocketIOClient client, String userName);
     public void removeClient(String userName);
     public ArrayList<String> getCurrentUsers();
