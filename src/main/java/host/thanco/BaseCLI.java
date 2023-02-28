@@ -1,3 +1,4 @@
+// Copywrite Terry Hancock 2023
 package host.thanco;
 
 public class BaseCLI implements BaseUI {

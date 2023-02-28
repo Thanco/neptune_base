@@ -1,3 +1,4 @@
+// Copyright Terry Hancock 2023
 package host.thanco;
 
 public interface BaseUI {

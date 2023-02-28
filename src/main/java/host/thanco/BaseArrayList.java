@@ -1,20 +1,22 @@
+// Copyright Terry Hancock 2023
 package host.thanco;
 
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.FileReader;
-import java.io.FileWriter;
-import java.io.IOException;
+import java.io.OutputStream;
 import java.io.OutputStreamWriter;
-import java.io.Writer;
 import java.util.ArrayList;
+import java.awt.image.BufferedImage;
 import java.util.Collections;
+import java.util.Hashtable;
+import java.util.Iterator;
+import javax.imageio.*;
+import javax.imageio.stream.*;
 
 import com.corundumstudio.socketio.SocketIOClient;
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
+import com.google.gson.*;
+import com.google.gson.reflect.TypeToken;
 
 public class BaseArrayList implements BaseDatabase {
     private static final int RECENTS_SIZE = 15;
@@ -22,9 +24,9 @@ public class BaseArrayList implements BaseDatabase {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     private static BaseArrayList instance;
-    private ArrayList<ChatItem> messageList;
+    private Hashtable<String, ArrayList<ChatItem>> messageLists;
     private ArrayList<String> currentUsers;
-    private int currentItemIndex;
+    private Hashtable<String, Integer> currentItemIndexes;
 
     private BaseArrayList() {
         initDatabase();
@@ -42,26 +44,32 @@ public class BaseArrayList implements BaseDatabase {
         if (!new File(databasePath).exists()) {
             try {
                 new File(databasePath).createNewFile();
+                File imgFile = new File("img/");
+                imgFile.mkdirs();
             } catch (Exception e) {
                 e.printStackTrace();
             }
         }
         try (FileReader reader = new FileReader(databasePath)) {
-            ChatItem[] chatArr = GSON.fromJson(reader, ChatItem[].class);
-            messageList = new ArrayList<>();
-            if (chatArr != null) {
-                Collections.addAll(messageList, chatArr);
-                currentItemIndex = messageList.get(messageList.size() - 1).getItemIndex() + 1;
-                Collections.sort(messageList);
-            } else {
-                currentItemIndex = 0;
+            messageLists = GSON.fromJson(reader, new TypeToken<Hashtable<String, ArrayList<ChatItem>>>() {}.getType());
+            currentItemIndexes = new Hashtable<>();
+            if (messageLists == null) {
+                messageLists = new Hashtable<>();
+                currentUsers = new ArrayList<>();
+                return;
+            }
+            Object[] keys = messageLists.keySet().toArray();
+            for (int i = 0; i < keys.length; i++) {
+                ArrayList<ChatItem> messageList = messageLists.get(keys[i]);
+                if (messageList.size() > 0) {
+                    currentItemIndexes.putIfAbsent(keys[i].toString(), messageList.get(messageList.size() - 1).getItemIndex() + 1);                        
+                    Collections.sort(messageList);
+                }
             }
         } catch(Exception e) {
             e.printStackTrace();
         }
         currentUsers = new ArrayList<>();
-        File imgFile = new File("img/");
-        imgFile.mkdirs();
     }
 
     public void saveList() {
@@ -75,15 +83,15 @@ public class BaseArrayList implements BaseDatabase {
             }
         };
         try (OutputStreamWriter writer = new OutputStreamWriter(new FileOutputStream(databasePath))) {
-            GSON.toJson(messageList, writer);
+            GSON.toJson(messageLists, writer);
         } catch (Exception e) {
             e.printStackTrace();
         }        
     }
 
     @Override
-    public ArrayList<ChatItem> getMessageList() {
-        return messageList;
+    public Hashtable<String, ArrayList<ChatItem>> getMessageLists() {
+        return messageLists;
     }
 
     @Override
@@ -113,40 +121,77 @@ public class BaseArrayList implements BaseDatabase {
         if (item.getType() == 'i') {
             ChatItem newItem;
             try {
-                String newFileName = "img/" + item.getItemIndex() + ".png";
-                File newFile = new File(newFileName);
-                FileOutputStream out = new FileOutputStream(newFile);
+                String tempFile = "img/temp.png";
+                FileOutputStream out = new FileOutputStream(tempFile);
                 out.write((byte[]) item.getContent());
                 out.close();
-                newItem = new ChatItem(item.getItemIndex(), item.getUserName(), item.getType(), newFileName);
-                messageList.add(newItem);
+                File file = new File(tempFile);
+                BufferedImage image = ImageIO.read(file);
+                String newFileName = "img/" + item.getChannel() + item.getItemIndex() + ".jpg";
+                File newFile = new File(newFileName);
+
+                OutputStream os = new FileOutputStream(newFile);
+
+                Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName("jpg");
+                ImageWriter writer = (ImageWriter) writers.next();
+
+                ImageOutputStream ios = ImageIO.createImageOutputStream(os);
+                writer.setOutput(ios);
+
+                ImageWriteParam param = writer.getDefaultWriteParam();
+
+                param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+                param.setCompressionQuality(0.6f);
+                writer.write(null, new IIOImage(image, null, null), param);
+
+                os.close();
+                ios.close();
+                writer.dispose();
+                file.delete();
+
+                newItem = new ChatItem(item.getItemIndex(), item.getUserName(), item.getChannel(), item.getType(), newFileName);
+                addToList(newItem);
             } catch (Exception e) {
                 e.printStackTrace();
             }
             return;
         }
-        messageList.add(item);
-        Collections.sort(messageList);
+        addToList(item);
     }
 
-    public int getNextIndex() {
-        return currentItemIndex++;
+    private void addToList(ChatItem item) {
+        messageLists.putIfAbsent(item.getChannel(), new ArrayList<>());
+        messageLists.get(item.getChannel()).add(item);
+        Collections.sort(messageLists.get(item.getChannel()));
+    }
+
+    public int getNextIndex(String channel) {
+        currentItemIndexes.putIfAbsent(channel, -1);
+        Integer currentItemIndex = currentItemIndexes.get(channel);
+        return currentItemIndexes.put(channel, ++currentItemIndex);
     }
 
     public ArrayList<ChatItem> getRecents() {
-        int arrLength = Math.min(RECENTS_SIZE, messageList.size());
         ArrayList<ChatItem> temp = new ArrayList<>();
-        for (int i = messageList.size(); i > messageList.size() - arrLength; i--) {
-            temp.add(messageList.get(i - 1));
+        Object[] keys = messageLists.keySet().toArray();
+        for (int i = 0; i < keys.length; i++) {
+            ArrayList<ChatItem> log = messageLists.get(keys[i]);
+            int arrLength = Math.min(RECENTS_SIZE, log.size());
+            for (int j = log.size(); j > log.size() - arrLength; j--) {
+                temp.add(log.get(j - 1));
+            }
         }
-        Collections.reverse(temp);
         return temp;
     }
 
-    public ArrayList<ChatItem> getRecents(int oldestMessage) {
+    public ArrayList<ChatItem> getRecents(String channel, int oldestMessage) {
+        ArrayList<ChatItem> log = messageLists.get(channel);
+        if (log == null) {
+            return new ArrayList<>();
+        }
         ArrayList<ChatItem> temp = new ArrayList<>();
         for (int i = oldestMessage; i > 0 && i > oldestMessage - RECENTS_SIZE; i--) {
-            temp.add(messageList.get(i - 1));
+            temp.add(log.get(i - 1));
         }
         Collections.reverse(temp);
         return temp;

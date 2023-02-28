@@ -1,8 +1,10 @@
+// Copyright Terry Hancock 2023
 package host.thanco;
 
 import java.io.IOException;
 
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.event.ActionEvent;
@@ -11,10 +13,8 @@ import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
-import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
 import javafx.stage.Stage;
-import javafx.util.Callback;
 
 public class BaseGUI extends Application implements BaseUI {
 
@@ -44,19 +44,14 @@ public class BaseGUI extends Application implements BaseUI {
 
     @FXML
     void pressExitBtn(ActionEvent event) {
-        
+        Platform.exit();
     }
     
     @FXML
     public void initialize() {
-        observableList.setAll(BaseDatabase.getInstance().getMessageList());
+        observableList.addAll(BaseDatabase.getInstance().getMessageLists().get("Default"));
         messageListView.setItems(observableList);
-        messageListView.setCellFactory(new Callback<ListView<ChatItem>, javafx.scene.control.ListCell<ChatItem>>() {
-            @Override
-            public ListCell<ChatItem> call(ListView<ChatItem> messageListView) {
-                return new ChatItemViewCell();
-            }
-        });
+        messageListView.setCellFactory(e -> new ChatItemViewCell());
     }
 
     @Override
@@ -66,18 +61,38 @@ public class BaseGUI extends Application implements BaseUI {
 
     @Override
     public void printMessage(ChatItem message) {
-        observableList.setAll(BaseDatabase.getInstance().getMessageList());
-        observableList.add(message);
+        // Platform.runLater(() -> {
+        //     try {
+        //         scene = new Scene(loadFXML("primary"));
+        //         stage.setScene(scene);
+        //     } catch (Exception e) {
+        //         e.printStackTrace();
+        //     }
+        // });
+        
+        // System.out.println(message);
+        // observableList.setAll(BaseDatabase.getInstance().getMessageLists().get("Default"));
+        // observableList.add(message);
+        // observableList.clear();
+        // observableList.setAll(BaseDatabase.getInstance().getMessageLists().get("Default"));
+        // messageListView.setItems(observableList);
+        try {
+            // init();
+            // launch();
+            System.out.println(message);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
     public void clientConnected(String userName, String id) {
-        observableList.add(new ChatItem(-1, "System", 't', userName + " Connected on " + id));
+        observableList.add(new ChatItem(-1, "System", "Log",'t', userName + " Connected on " + id));
     }
 
     @Override
     public void clientDisconnected(String userName) {
-        observableList.add(new ChatItem(-1, "System", 't', userName + " Disconnected"));
+        observableList.add(new ChatItem(-1, "System", "Log", 't', userName + " Disconnected"));
     }
 
 }

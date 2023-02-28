@@ -1,3 +1,4 @@
+// Copywrite Terry Hancock 2023
 package host.thanco;
 
 import java.io.File;
@@ -12,16 +13,13 @@ import javafx.scene.layout.HBox;
 public class ChatItemCell {
 
     @FXML
-    private Label userNameLbl;
+    private HBox hBox;
 
     @FXML
-    private Label messageLbl;
+    private Label userNameLbl, messageLbl;
 
     @FXML
     private ImageView imgView;
-
-    @FXML
-    private HBox hBox;
 
     public ChatItemCell() {
         FXMLLoader fxmlLoader = new FXMLLoader(getClass().getResource("/fxml/chatItemCell.fxml"));
