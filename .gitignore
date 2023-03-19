@@ -28,4 +28,6 @@ img/
 *.cmd
 *.ps1
 
+*.sql
+
 json/

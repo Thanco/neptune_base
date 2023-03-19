@@ -4,17 +4,11 @@ package host.thanco;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.FileReader;
-import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.util.ArrayList;
-import java.awt.image.BufferedImage;
 import java.util.Collections;
 import java.util.Hashtable;
-import java.util.Iterator;
-import javax.imageio.*;
-import javax.imageio.stream.*;
 
-import com.corundumstudio.socketio.SocketIOClient;
 import com.google.gson.*;
 import com.google.gson.reflect.TypeToken;
 
@@ -25,7 +19,6 @@ public class BaseArrayList implements BaseDatabase {
 
     private static BaseArrayList instance;
     private Hashtable<String, ArrayList<ChatItem>> messageLists;
-    private ArrayList<String> currentUsers;
     private Hashtable<String, Integer> currentItemIndexes;
 
     private BaseArrayList() {
@@ -55,7 +48,6 @@ public class BaseArrayList implements BaseDatabase {
             currentItemIndexes = new Hashtable<>();
             if (messageLists == null) {
                 messageLists = new Hashtable<>();
-                currentUsers = new ArrayList<>();
                 return;
             }
             Object[] keys = messageLists.keySet().toArray();
@@ -69,7 +61,6 @@ public class BaseArrayList implements BaseDatabase {
         } catch(Exception e) {
             e.printStackTrace();
         }
-        currentUsers = new ArrayList<>();
     }
 
     public void saveList() {
@@ -89,76 +80,48 @@ public class BaseArrayList implements BaseDatabase {
         }        
     }
 
-    @Override
-    public Hashtable<String, ArrayList<ChatItem>> getMessageLists() {
-        return messageLists;
-    }
-
-    @Override
-    public void addClient(SocketIOClient client, String userName) {
-        client.set("userName", userName);
-        currentUsers.add(userName);
-    }
-
-    public void removeClient(String userName) {
-        currentUsers.remove(userName);
-    }
-
-    public ArrayList<String> getCurrentUsers() {
-        return currentUsers;
-    }
-
-    @Override
-    public String getClientUsername(SocketIOClient client) {
-        try {
-            return client.get("userName");
-        } catch (Exception e) {
-            return "";
-        }
-    }
-
     public void store(ChatItem item) {
         if (item.getType() == 'i') {
-            ChatItem newItem;
             try {
-                String tempFile = "img/temp.png";
-                FileOutputStream out = new FileOutputStream(tempFile);
-                out.write((byte[]) item.getContent());
-                out.close();
-                File file = new File(tempFile);
-                BufferedImage image = ImageIO.read(file);
                 String newFileName = "img/" + item.getChannel() + item.getItemIndex() + ".jpg";
-                File newFile = new File(newFileName);
-
-                OutputStream os = new FileOutputStream(newFile);
-
-                Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName("jpg");
-                ImageWriter writer = (ImageWriter) writers.next();
-
-                ImageOutputStream ios = ImageIO.createImageOutputStream(os);
-                writer.setOutput(ios);
-
-                ImageWriteParam param = writer.getDefaultWriteParam();
-
-                param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
-                param.setCompressionQuality(0.6f);
-                writer.write(null, new IIOImage(image, null, null), param);
-
-                os.close();
-                ios.close();
-                writer.dispose();
-                file.delete();
-
-                newItem = new ChatItem(item.getItemIndex(), item.getUserName(), item.getChannel(), item.getType(), newFileName);
-                addToList(newItem);
+                ImageHandler.saveImage(newFileName, (byte[]) item.getContent());
+                item.setContent(newFileName);
             } catch (Exception e) {
                 e.printStackTrace();
             }
-            return;
         }
         addToList(item);
     }
 
+    public void edit(ChatItem message) {
+        ArrayList<ChatItem> currentList = messageLists.get(message.getChannel());
+        ChatItem oldItem = new ChatItem(-1, "System", "Default", 't', "None");
+        for (int i = currentList.size() - 1; i > -1; i--) {
+            if (currentList.get(i).getItemIndex() == message.getItemIndex()) {
+                oldItem = currentList.get(i);
+                break;
+            }
+        }
+        if (oldItem.getItemIndex() == -1 || 
+        !message.getUserName().equals(oldItem.getUserName()) || 
+        ((String) message.getContent()).equals((String) oldItem.getContent())) {
+            return;
+        }
+        currentList.set(currentList.indexOf(oldItem), message);
+    }
+
+    public void delete(ChatItem message) {
+        ArrayList<ChatItem> currentList = messageLists.get(message.getChannel());
+        int itemIndex = -1;
+        for (int i = currentList.size() - 1; i > -1; i--) {
+            if (currentList.get(i).getItemIndex() == message.getItemIndex()) {
+                itemIndex = i;
+                break;
+            }
+        }
+        currentList.remove(itemIndex);
+    }
+    
     private void addToList(ChatItem item) {
         messageLists.putIfAbsent(item.getChannel(), new ArrayList<>());
         messageLists.get(item.getChannel()).add(item);
@@ -167,7 +130,7 @@ public class BaseArrayList implements BaseDatabase {
 
     public int getNextIndex(String channel) {
         currentItemIndexes.putIfAbsent(channel, -1);
-        Integer currentItemIndex = currentItemIndexes.get(channel);
+        int currentItemIndex = currentItemIndexes.get(channel);
         return currentItemIndexes.put(channel, ++currentItemIndex);
     }
 

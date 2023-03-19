@@ -1,9 +1,6 @@
 // Copyright Terry Hancock 2023
 package host.thanco;
 
-import java.io.File;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Scanner;
 
@@ -20,7 +17,7 @@ import com.google.gson.Gson;
 
 public class BaseController {
 
-    private static final String VERSION = "0.8.9";
+    private static final String VERSION = "0.8.9.2";
 
     private static final String CHAT_MESSAGE = "chatMessage";
     private static final String BACKLOG_FILL = "backlogFill";
@@ -38,12 +35,14 @@ public class BaseController {
 
     private static BaseDatabase database;
     private static BaseUI ui;
+    private static UserHandler userHandler;
     private static SocketIOServer server;
 
     public static void launch(String[] args) {
 
         database = BaseDatabase.getInstance();
         ui = new BaseCLI();
+        userHandler = UserHandler.getInstance();
 
         String port = "80";
         if (args.length != 0) {
@@ -89,53 +88,56 @@ public class BaseController {
         server.addConnectListener(client -> clientConnected(client));
         server.addDisconnectListener(client -> clientDisconnected(client));
         server.addEventListener(CHAT_MESSAGE, String.class, (SocketIOClient client, String itemJson, AckRequest ackRequest) -> {
-                try {
-                    ChatItem item = ChatItem.fromJson(itemJson);
-                    item.setItemIndex(database.getNextIndex(item.getChannel()));
-                    database.store(item);
-                    ui.printMessage(item);
-                    server.getBroadcastOperations().sendEvent(CHAT_MESSAGE, item);
-                } catch (Exception e) {
-                    ui.printMessage(new ChatItem(-1, "System", "Log", 't', e.getMessage()));
-                }
+            try {
+                ChatItem item = ChatItem.fromJson(itemJson);
+                item.setItemIndex(database.getNextIndex(item.getChannel()));
+                database.store(item);
+                ui.printMessage(item);
+                server.getBroadcastOperations().sendEvent(CHAT_MESSAGE, item);
+            } catch (Exception e) {
+                ui.printMessage(new ChatItem(-1, "System", "Log", 't', e.getMessage()));
+            }
         });
         server.addEventListener(USERNAME_SET, String.class, new DataListener<String>() {
             @Override
-            public void onData(SocketIOClient client, String message, AckRequest ackRequest) throws Exception {
-                if (database.getClientUsername(client) != null) {
-                    ui.printMessage(new ChatItem(-1, "System", "none", 't', database.getClientUsername(client) + " Changed userName to " + message));
-                    server.getBroadcastOperations().sendEvent(USER_LEAVE, database.getClientUsername(client));
-                    database.removeClient(database.getClientUsername(client));
+            public void onData(SocketIOClient client, String userName, AckRequest ackRequest) throws Exception {
+                String localUsername = userHandler.getClientUsername(client);
+                if (localUsername != null) {
+                    ui.printMessage(new ChatItem(-1, "System", "none", 't', localUsername + " Changed userName to " + userName));
+                    server.getBroadcastOperations().sendEvent(USER_LEAVE, localUsername);
+                    userHandler.removeClient(client);
                 }
-                database.addClient(client, message);
-                client.sendEvent(USERNAME_SEND, message);
-                server.getBroadcastOperations().sendEvent(USER_JOIN, message);
-                ui.clientConnected(database.getClientUsername(client), client.getSessionId().toString());
+                if (!userHandler.addClient(client, userName)) {
+                    client.disconnect();
+                }
+                client.sendEvent(USERNAME_SEND, userName);
+                server.getBroadcastOperations().sendEvent(USER_JOIN, userName);
+                ui.clientConnected(userName, client.getSessionId().toString());
             }
         });
         server.addEventListener(IMAGE, String.class, (SocketIOClient client, String itemJson, AckRequest ackRequest) -> {
             try {
                 ChatItem item = ChatItem.fromJson(itemJson);
                 byte[] bytes = new Gson().fromJson(item.getContent().toString(), byte[].class);
-                ChatItem newImage = new ChatItem(database.getNextIndex(item.getChannel()), database.getClientUsername(client), item.getChannel(), 'i', bytes);
+                ChatItem newImage = new ChatItem(database.getNextIndex(item.getChannel()), item.getUserName(), item.getChannel(), 'i', bytes);
                 database.store(newImage);
-                newImage.setContent(Files.readAllBytes(Paths.get(new File("img/" + newImage.getChannel() + newImage.getItemIndex() + ".jpg").toURI())));
+                newImage.setContent(ImageHandler.getImageBytes(newImage));
                 System.out.println("newImage");
                 server.getBroadcastOperations().sendEvent(IMAGE, newImage, new BroadcastAckCallback<>(Character.class, 30) {
                     protected void onAllSuccess() {
                         System.out.println("All clients successfully recieved image");
                     };
                     protected void onClientSuccess(SocketIOClient client, Character result) {
-                        System.out.println(client.getSessionId() + " recived image.");
+                        System.out.println(userHandler.getClientUsername(client) + " recived image.");
                     };
                     protected void onClientTimeout(SocketIOClient client) {
-                        ui.printMessage(new ChatItem(-1, "System", "none", 't', database.getClientUsername(client) + " Failed to AckImage, resending..."));
+                        ui.printMessage(new ChatItem(-1, "System", "none", 't', userHandler.getClientUsername(client) + " Failed to AckImage, resending..."));
                         client.sendEvent(IMAGE, new AckCallback<>(Character.class, 30) {
                             public void onSuccess(Character arg0) {
-                                ui.printMessage(new ChatItem(-1, "System", "none", 't', database.getClientUsername(client) + "recived image resend."));
+                                ui.printMessage(new ChatItem(-1, "System", "none", 't', userHandler.getClientUsername(client) + "recived image resend."));
                             };
                             public void onTimeout() {
-                                ui.printMessage(new ChatItem(-1, "System", "none", 't', database.getClientUsername(client) + "failed to ack image resend."));
+                                ui.printMessage(new ChatItem(-1, "System", "none", 't', userHandler.getClientUsername(client) + "failed to ack image resend."));
                             };
                         }, newImage);
                     };
@@ -163,20 +165,7 @@ public class BaseController {
         server.addEventListener(EDIT_MESSAGE, String.class, (SocketIOClient client, String itemJson, AckRequest ackRequest) -> {
             try {
                 ChatItem newItem = ChatItem.fromJson(itemJson);
-                ArrayList<ChatItem> currentList = database.getMessageLists().get(newItem.getChannel());
-                ChatItem oldItem = new ChatItem(-1, "System", "Default", 't', "None");
-                for (int i = currentList.size() - 1; i > -1; i--) {
-                    if (currentList.get(i).getItemIndex() == newItem.getItemIndex()) {
-                        oldItem = currentList.get(i);
-                        break;
-                    }
-                }
-                if (oldItem.getItemIndex() == -1 || 
-                !newItem.getUserName().equals(oldItem.getUserName()) || 
-                ((String) newItem.getContent()).equals((String) oldItem.getContent())) {
-                    return;
-                }
-                currentList.set(currentList.indexOf(oldItem), newItem);
+                database.edit(newItem);
                 server.getBroadcastOperations().sendEvent(EDIT_MESSAGE, newItem);
             } catch (Exception e) {
                 ui.printMessage(new ChatItem(-1, "System", "Log", 't', e.getMessage()));
@@ -185,15 +174,7 @@ public class BaseController {
         server.addEventListener(DELETE_MESSAGE, String.class, (SocketIOClient client, String itemJson, AckRequest ackRequest) -> {
             try {
                 ChatItem deleteItem = ChatItem.fromJson(itemJson);
-                ArrayList<ChatItem> currentList = database.getMessageLists().get(deleteItem.getChannel());
-                int itemIndex = -1;
-                for (int i = currentList.size() - 1; i > -1; i--) {
-                    if (currentList.get(i).getItemIndex() == deleteItem.getItemIndex()) {
-                        itemIndex = i;
-                        break;
-                    }
-                }
-                currentList.remove(itemIndex);
+                database.delete(deleteItem);
                 server.getBroadcastOperations().sendEvent(DELETE_MESSAGE, deleteItem);
             } catch (Exception e) {
                 ui.printMessage(new ChatItem(-1, "System", "Log", 't', e.getMessage()));
@@ -208,20 +189,17 @@ public class BaseController {
      */
     private static void clientConnected(SocketIOClient client) {
         ui.clientConnected("newUser", client.getSessionId().toString());
-        client.sendEvent(USER_LIST_SEND, database.getCurrentUsers());
+        client.sendEvent(USER_LIST_SEND, userHandler.getCurrentUsers());
         backlogFill(client);
     }
 
     private static void clientDisconnected(SocketIOClient client) {
-        String username = database.getClientUsername(client);
-        if (username.equals("null")) {
-            ui.clientDisconnected(username);
-            database.removeClient(username);
-            return;
-        }
+        String username = userHandler.getClientUsername(client);
         ui.clientDisconnected(username);
-        server.getBroadcastOperations().sendEvent(USER_LEAVE, username);
-        database.removeClient(username);
+        if (!username.equals("null")) {
+            server.getBroadcastOperations().sendEvent(USER_LEAVE, username);
+        }
+        userHandler.removeClient(client);
     }
 
     private static void backlogFill(SocketIOClient client) {
@@ -236,10 +214,7 @@ public class BaseController {
                     break;
                 case 'i':
                     try {
-                        String imgPath = (String) chatItem.getContent();
-                        File newFile = new File(imgPath);
-                        byte[] bytes = Files.readAllBytes(newFile.toPath());
-                        ChatItem newItem = new ChatItem(chatItem.getItemIndex(), chatItem.getUserName(), chatItem.getChannel(), chatItem.getType(), bytes);
+                        ChatItem newItem = new ChatItem(chatItem.getItemIndex(), chatItem.getUserName(), chatItem.getChannel(), chatItem.getType(), ImageHandler.getImageBytes(chatItem));
                         client.sendEvent(BACKLOG_IMAGE, new AckCallback<>(Character.class, 30) {
                             public void onSuccess(Character arg0) {
                                 System.out.println("New client successfully recieved image");

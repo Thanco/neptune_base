@@ -52,6 +52,10 @@ public class ChatItem implements Comparable<ChatItem>, Serializable {
         return type + " " + channel + " " + itemIndex + ". " + userName + ": " + content;
     }
 
+    public String toSQLString() {
+        return "'" + userName + "','" + type + "','" + content + "'";
+    }
+
     public char getType() {
         return type;
     }

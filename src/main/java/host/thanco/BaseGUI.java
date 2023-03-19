@@ -49,7 +49,7 @@ public class BaseGUI extends Application implements BaseUI {
     
     @FXML
     public void initialize() {
-        observableList.addAll(BaseDatabase.getInstance().getMessageLists().get("Default"));
+        // observableList.addAll(BaseDatabase.getInstance().getMessageLists().get("Default"));
         messageListView.setItems(observableList);
         messageListView.setCellFactory(e -> new ChatItemViewCell());
     }
