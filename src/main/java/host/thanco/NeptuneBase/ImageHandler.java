@@ -3,12 +3,18 @@ package host.thanco.NeptuneBase;
 
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.Base64;
 import java.util.Iterator;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 
 import javax.imageio.*;
 import javax.imageio.stream.*;
@@ -59,12 +65,45 @@ public abstract class ImageHandler {
         }
     }
 
-    public static byte[] getImageBytes(ChatItem imageItem) {
+    public static String getImageBytesBase64(ChatItem imageItem) {
         try {
-            return Files.readAllBytes(Paths.get(new File((String) imageItem.getContent()).toURI()));
+            byte[] imgBytes = Files.readAllBytes(Paths.get(new File((String) imageItem.getContent()).toURI()));
+            return ImageHandler.compressImageBytes(imgBytes);
         } catch (Exception e) {
             e.printStackTrace();
         }
-        return new byte[0];
+        return "";
+    }
+
+    public static String compressImageBytes(byte[] imageBytes) {
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+
+        try (GZIPOutputStream gzipOutputStream = new GZIPOutputStream(outputStream)) {
+            gzipOutputStream.write(imageBytes);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        byte[] compressedBytes = outputStream.toByteArray();
+        byte[] encodedBytes = Base64.getEncoder().encode(compressedBytes);
+        return new String(encodedBytes, StandardCharsets.UTF_8);
+    }
+
+    public static byte[] decompressImageBytes(String imageGZip) {
+        byte[] decodedBytes = Base64.getDecoder().decode(imageGZip.getBytes(StandardCharsets.UTF_8));
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        ByteArrayInputStream inputStream = new ByteArrayInputStream(decodedBytes);
+
+        try (GZIPInputStream gzipInputStream = new GZIPInputStream(inputStream)) {
+            byte[] buffer = new byte[1024];
+            int length;
+            while ((length = gzipInputStream.read(buffer)) != -1) {
+                outputStream.write(buffer, 0, length);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return outputStream.toByteArray();
     }
 }

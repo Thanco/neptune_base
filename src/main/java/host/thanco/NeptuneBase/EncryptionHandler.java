@@ -37,6 +37,7 @@ public class EncryptionHandler {
     public String generateNewClientEncryption(SocketIOClient client, String publicKeyElements) {
         try {
             String[] publicKeyArray = new Gson().fromJson(publicKeyElements, String[].class);
+            // int exponent = Base64.getDecoder().decode(publicKeyArray[1])[0];
             PublicKey rsaPublicKey = rebuildPublicRSAKey(publicKeyArray[0], Integer.parseInt(publicKeyArray[1]));
             byte[] clientSessionKey = generateAESKey();
             String encodedSessionKey = Base64.getEncoder().encodeToString(clientSessionKey);
@@ -74,7 +75,6 @@ public class EncryptionHandler {
 
         // byte[] unencryptedBytes = Base64.getDecoder().decode(plaintext);
         byte[] unencryptedBytes = plaintext.getBytes();
-        System.out.println(unencryptedBytes);
 
         byte[] encryptedBytes = cipher.doFinal(unencryptedBytes);
         String encryptedText = Base64.getEncoder().encodeToString(encryptedBytes);

@@ -16,7 +16,7 @@ import com.google.gson.reflect.TypeToken;
 
 public class BaseArrayList implements BaseDatabase {
     private static final String DATABASE_PATH = "json/databaseStore.json";
-    private static final int RECENTS_SIZE = 15;
+    private int recentsSize;
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
@@ -39,6 +39,7 @@ public class BaseArrayList implements BaseDatabase {
     }
 
     public void initDatabase() {
+        recentsSize = new ConfigurationHandler().getConfiguration().getRecentsSize();
         if (!new File(DATABASE_PATH).exists()) {
             try {
                 new File(DATABASE_PATH).createNewFile();
@@ -91,12 +92,12 @@ public class BaseArrayList implements BaseDatabase {
             } catch (Exception e) {
                 e.printStackTrace();
             }
-        };
+        }
         try (OutputStreamWriter writer = new OutputStreamWriter(new FileOutputStream(DATABASE_PATH))) {
             GSON.toJson(messageLists, writer);
         } catch (Exception e) {
             e.printStackTrace();
-        }        
+        }
     }
 
     public Hashtable<String, ArrayList<ChatItem>> getLists() {
@@ -163,7 +164,7 @@ public class BaseArrayList implements BaseDatabase {
         Object[] keys = messageLists.keySet().toArray();
         for (int i = 0; i < keys.length; i++) {
             ArrayList<ChatItem> log = messageLists.get(keys[i]);
-            int arrLength = Math.min(RECENTS_SIZE, log.size());
+            int arrLength = Math.min(recentsSize, log.size());
             for (int j = log.size(); j > log.size() - arrLength; j--) {
                 temp.add(log.get(j - 1));
             }
@@ -180,17 +181,26 @@ public class BaseArrayList implements BaseDatabase {
             return new ArrayList<>();
         }
         ArrayList<ChatItem> temp = new ArrayList<>();
-        int lowerRange = oldestMessage - RECENTS_SIZE;
+        int lowerRange = oldestMessage - recentsSize;
+        int lastIndex = oldestMessage;
         for (int i = log.size() - 1; i >= 0; i--) {
             int itemIndex = log.get(i).getItemIndex();
             if (itemIndex < oldestMessage) {
                 temp.add(log.get(i));
+                if (lastIndex - itemIndex > 1) {
+                    lowerRange -= (lastIndex - itemIndex - 1);
+                }
             }
             if (itemIndex <= lowerRange) {
                 break;
             }
+            lastIndex = itemIndex;
         }
         Collections.reverse(temp);
         return temp;
+    }
+
+    public void removeChannel(String channel) {
+        messageLists.remove(channel);
     }
 }

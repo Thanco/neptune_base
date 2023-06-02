@@ -61,7 +61,11 @@ public class ChatItem implements Comparable<ChatItem>, Serializable {
     }
 
     public String toSQLString() {
-        return "'" + userName + "','" + type + "','" + content + "'";
+        String ret = "'" + BaseSQLDatabase.formatForSQL(userName) + "','" + type + "','";
+        if (content instanceof String) {
+            return ret + BaseSQLDatabase.formatForSQL((String) content) + "'";
+        }
+        return  ret + content + "'";
     }
 
     public char getType() {

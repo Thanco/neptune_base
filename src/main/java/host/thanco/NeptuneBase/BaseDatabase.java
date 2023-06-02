@@ -3,10 +3,15 @@ package host.thanco.NeptuneBase;
 
 import java.util.ArrayList;
 
+import host.thanco.Configurator.Configuration;
 public interface BaseDatabase {
     public final static BaseDatabase instance = getInstance();
     public static BaseDatabase getInstance() {
         if (instance == null) {
+            Configuration configuration = new ConfigurationHandler().getConfiguration();
+            if (configuration.isSqlServer()) {
+                return BaseSQLDatabase.getInstance();
+            }
             return BaseArrayList.getInstance();
         }
         return instance;
@@ -19,4 +24,5 @@ public interface BaseDatabase {
     public ArrayList<ChatItem> getRecents(String channel, int oldestMessage);
     public int getNextIndex(String channel);
     public void saveLists();
+    public void removeChannel(String channel);
 }

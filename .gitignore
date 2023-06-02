@@ -29,5 +29,6 @@ img/
 *.ps1
 
 *.sql
+*.exe
 
 json/

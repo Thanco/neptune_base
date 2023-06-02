@@ -13,11 +13,10 @@ import com.corundumstudio.socketio.SocketIOClient;
 import com.corundumstudio.socketio.SocketIOServer;
 import com.corundumstudio.socketio.Transport;
 import com.corundumstudio.socketio.listener.DataListener;
-import com.google.gson.Gson;
 
 public class BaseController {
 
-    private static final String VERSION = "0.10.0.0";
+    private static final String VERSION = "0.11.1.0";
 
     private static final String CHAT_MESSAGE = "chatMessage";
     private static final String BACKLOG_FILL = "backlogFill";
@@ -32,8 +31,6 @@ public class BaseController {
     private static final String MESSAGE_REQUEST = "messageRequest";
     private static final String EDIT_MESSAGE = "edit";
     private static final String DELETE_MESSAGE = "delete";
-
-    // private static final Gson GSON = new Gson();
 
     private static BaseDatabase database;
     private static BaseUI ui;
@@ -51,11 +48,8 @@ public class BaseController {
         userHandler = UserHandler.getInstance();
         clientTypes = new Hashtable<>();
 
-        String port = "80";
-        if (args.length != 0) {
-            port = args[0];
-        }
-        startServer(port);
+        ConfigurationHandler configurationHandler = new ConfigurationHandler();
+        startServer(configurationHandler.getConfiguration().getPort());
 
         ui.launchUI(args);
 
@@ -77,10 +71,10 @@ public class BaseController {
      * 
      * @param port the port to start the server on
      */
-    private static void startServer(String port) {
+    private static void startServer(int port) {
         Configuration config = new Configuration();
         config.setHostname("0.0.0.0");
-        config.setPort(Integer.parseInt(port));
+        config.setPort(port);
         config.setTransports(Transport.WEBSOCKET);
 
         config.setMaxFramePayloadLength(50000000);
@@ -102,7 +96,6 @@ public class BaseController {
             // encryptionHandler.sendToClient(client, "sessionKey", encryptedSessionKey);
             client.sendEvent("sessionKey", encryptedSessionKey);
         });
-
         // server.addConnectListener(client -> chatClientConnected(client));
         server.addDisconnectListener(client -> {
             encryptionHandler.clientDisconnect(client);
@@ -159,33 +152,16 @@ public class BaseController {
             try {
                 String itemJson = encryptionHandler.AESDecryptData(client, itemCrypto);
                 ChatItem item = ChatItem.fromJson(itemJson);
-                byte[] bytes = new Gson().fromJson(item.getContent().toString(), byte[].class);
+                // byte[] bytes = new Gson().fromJson(item.getContent().toString(), byte[].class);
+                byte[] bytes = ImageHandler.decompressImageBytes((String) item.getContent());
                 ChatItem newImage = new ChatItem(database.getNextIndex(item.getChannel()), item.getUserName(), item.getChannel(), 'i', bytes);
                 database.store(newImage);
-                newImage.setContent(ImageHandler.getImageBytes(newImage));
+                newImage.setContent(ImageHandler.getImageBytesBase64(newImage));
                 System.out.println("newImage");
                 sendToClients(IMAGE, newImage, true);
-                // server.getBroadcastOperations().sendEvent(IMAGE, newImage, new BroadcastAckCallback<>(Character.class, 30) {
-                //     protected void onAllSuccess() {
-                //         System.out.println("All clients successfully recieved image");
-                //     };
-                //     protected void onClientSuccess(SocketIOClient client, Character result) {
-                //         System.out.println(userHandler.getClientUsername(client) + " recived image.");
-                //     };
-                //     protected void onClientTimeout(SocketIOClient client) {
-                //         ui.printMessage(new ChatItem(-1, "System", "none", 't', userHandler.getClientUsername(client) + " Failed to AckImage, resending..."));
-                //         client.sendEvent(IMAGE, new AckCallback<>(Character.class, 30) {
-                //             public void onSuccess(Character arg0) {
-                //                 ui.printMessage(new ChatItem(-1, "System", "none", 't', userHandler.getClientUsername(client) + "recived image resend."));
-                //             };
-                //             public void onTimeout() {
-                //                 ui.printMessage(new ChatItem(-1, "System", "none", 't', userHandler.getClientUsername(client) + "failed to ack image resend."));
-                //             };
-                //         }, newImage);
-                //     };
-                // });
             } catch (Exception e) {
                 ui.printMessage(new ChatItem(-1, "System", "Log", 't', e.getMessage()));
+                e.printStackTrace();
             }
         });
         server.addEventListener(USER_TYPING, String.class, (SocketIOClient client, String itemCrypto, AckRequest ackRequest) -> {
@@ -228,8 +204,14 @@ public class BaseController {
             } catch (Exception e) {
                 ui.printMessage(new ChatItem(-1, "System", "Log", 't', e.getMessage()));
             }
+        });  
+        server.addEventListener("removeChannel", String.class, (SocketIOClient client, String itemJson, AckRequest ackRequest) -> {
+            String decrypt = encryptionHandler.AESDecryptData(client, itemJson);
+            ChatItem item = ChatItem.fromJson(decrypt);
+            database.removeChannel(item.getChannel());
+            sendToClients("removeChannel", item, false);
         });
-    
+
         server.addEventListener("vcClient", String.class, (client, message, ackRequest) -> {
             clientTypes.put(client, "vcClient");
             signalingServer.onConnect(client);
@@ -280,7 +262,7 @@ public class BaseController {
                     break;
                 case 'i':
                     try {
-                        ChatItem newItem = new ChatItem(chatItem.getItemIndex(), chatItem.getUserName(), chatItem.getChannel(), chatItem.getType(), ImageHandler.getImageBytes(chatItem));
+                        ChatItem newItem = new ChatItem(chatItem.getItemIndex(), chatItem.getUserName(), chatItem.getChannel(), chatItem.getType(), ImageHandler.getImageBytesBase64(chatItem));
                         encryptionHandler.sendToClient(client, BACKLOG_IMAGE, newItem, false);
                         // client.sendEvent(BACKLOG_IMAGE, new AckCallback<>(Character.class, 30) {
                         //     public void onSuccess(Character arg0) {
