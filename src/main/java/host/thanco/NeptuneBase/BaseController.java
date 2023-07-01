@@ -1,9 +1,18 @@
 // Copyright Terry Hancock 2023
 package host.thanco.NeptuneBase;
 
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.security.InvalidAlgorithmParameterException;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Hashtable;
 import java.util.Scanner;
+
+import javax.crypto.BadPaddingException;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
 
 // import com.corundumstudio.socketio.AckCallback;
 import com.corundumstudio.socketio.AckRequest;
@@ -12,11 +21,11 @@ import com.corundumstudio.socketio.Configuration;
 import com.corundumstudio.socketio.SocketIOClient;
 import com.corundumstudio.socketio.SocketIOServer;
 import com.corundumstudio.socketio.Transport;
-import com.corundumstudio.socketio.listener.DataListener;
+import com.google.gson.Gson;
 
 public class BaseController {
 
-    private static final String VERSION = "0.11.1.0";
+    private static final String VERSION = "0.12.0.0";
 
     private static final String CHAT_MESSAGE = "chatMessage";
     private static final String BACKLOG_FILL = "backlogFill";
@@ -91,10 +100,9 @@ public class BaseController {
      * Adds event listeners for events from clients
      */
     private static void addServerListeners() {
-        server.addEventListener("publicKey", String.class, (client, publicKeyElements, ackRequest) -> {
-            String encryptedSessionKey = encryptionHandler.generateNewClientEncryption(client, publicKeyElements);
-            // encryptionHandler.sendToClient(client, "sessionKey", encryptedSessionKey);
-            client.sendEvent("sessionKey", encryptedSessionKey);
+        server.addEventListener("publicKey", String.class,
+        (client, publicKeyElements, ackRequest) -> {
+            processNewClientEncryption(client, publicKeyElements);
         });
         // server.addConnectListener(client -> chatClientConnected(client));
         server.addDisconnectListener(client -> {
@@ -110,106 +118,40 @@ public class BaseController {
                     break;
             }
         });
-        server.addEventListener("chatClient", String.class, (client, message, ackRequest) -> chatClientConnected(client));
-        server.addEventListener(CHAT_MESSAGE, String.class, (SocketIOClient client, String itemJson, AckRequest ackRequest) -> {
-            try {
-                String decryptedItemJson = encryptionHandler.AESDecryptData(client, itemJson);
-                ChatItem item = ChatItem.fromJson(decryptedItemJson);
-                // ChatItem item = ChatItem.fromJson(itemJson);
-                item.setItemIndex(database.getNextIndex(item.getChannel()));
-                item.trim();
-                database.store(item);
-                ui.printMessage(item);
-
-                sendToClients(CHAT_MESSAGE, item);
-                // server.getBroadcastOperations().sendEvent(CHAT_MESSAGE, item);
-            } catch (Exception e) {
-                ui.printMessage(new ChatItem(-1, "System", "Log", 't', e.getMessage()));
-            }
+        server.addEventListener("chatClient", String.class, (client, message, ackRequest) -> {
+            chatClientConnected(client);
         });
-        server.addEventListener(USERNAME_SET, String.class, new DataListener<String>() {
-            @Override
-            public void onData(SocketIOClient client, String userNameCrypto, AckRequest ackRequest) throws Exception {
-                String userName = encryptionHandler.AESDecryptData(client, userNameCrypto);
-                String localUsername = userHandler.getClientUsername(client);
-                if (localUsername != null) {
-                    ui.printMessage(new ChatItem(-1, "System", "none", 't', localUsername + " Changed userName to " + userName));
-                    sendToClients(USER_LEAVE, localUsername);
-                    // server.getBroadcastOperations().sendEvent(USER_LEAVE, localUsername);
-                    userHandler.removeClient(client);
-                }
-                if (!userHandler.addClient(client, userName)) {
-                    client.disconnect();
-                }
-                encryptionHandler.sendToClient(client, USERNAME_SEND, userName);
-                // client.sendEvent(USERNAME_SEND, userName);
-                sendToClients(USER_JOIN, userName);
-                // server.getBroadcastOperations().sendEvent(USER_JOIN, userName);
-                ui.clientConnected(userName, client.getSessionId().toString());
-            }
+        server.addEventListener(CHAT_MESSAGE, String.class, (SocketIOClient client, String itemJson, AckRequest ackRequest) -> {
+            String[] formatted = new Gson().fromJson(itemJson, String[].class);
+            processMessage(client, formatted[0], formatted[1]);
+        });
+        server.addEventListener(USERNAME_SET, String.class, (SocketIOClient client, String userNameCrypto, AckRequest ackRequest) -> {
+            String[] formatted = new Gson().fromJson(userNameCrypto, String[].class);
+            addChatClient(client, formatted[0], formatted[1]);
         });
         server.addEventListener(IMAGE, String.class, (SocketIOClient client, String itemCrypto, AckRequest ackRequest) -> {
-            try {
-                String itemJson = encryptionHandler.AESDecryptData(client, itemCrypto);
-                ChatItem item = ChatItem.fromJson(itemJson);
-                // byte[] bytes = new Gson().fromJson(item.getContent().toString(), byte[].class);
-                byte[] bytes = ImageHandler.decompressImageBytes((String) item.getContent());
-                ChatItem newImage = new ChatItem(database.getNextIndex(item.getChannel()), item.getUserName(), item.getChannel(), 'i', bytes);
-                database.store(newImage);
-                newImage.setContent(ImageHandler.getImageBytesBase64(newImage));
-                System.out.println("newImage");
-                sendToClients(IMAGE, newImage, true);
-            } catch (Exception e) {
-                ui.printMessage(new ChatItem(-1, "System", "Log", 't', e.getMessage()));
-                e.printStackTrace();
-            }
+            String[] formatted = new Gson().fromJson(itemCrypto, String[].class);
+            processImage(client, formatted[0], formatted[1]);
         });
         server.addEventListener(USER_TYPING, String.class, (SocketIOClient client, String itemCrypto, AckRequest ackRequest) -> {
-            try {
-                String itemJson = encryptionHandler.AESDecryptData(client, itemCrypto);
-                ChatItem item = ChatItem.fromJson(itemJson);
-                sendToClients(USER_TYPING, item);
-                // server.getBroadcastOperations().sendEvent(USER_TYPING, item);
-            } catch (Exception e) {
-                ui.printMessage(new ChatItem(-1, "System", "Log", 't', e.getMessage()));
-            }
+            String[] formatted = new Gson().fromJson(itemCrypto, String[].class);
+            processTypingPing(client, formatted[0], formatted[1]);
         });
         server.addEventListener(MESSAGE_REQUEST, String.class, (SocketIOClient client, String itemCrypto, AckRequest ackRequest) -> {
-            try {
-                String itemJson = encryptionHandler.AESDecryptData(client, itemCrypto);
-                ChatItem item = ChatItem.fromJson(itemJson);
-                backlogFill(client, database.getRecents(item.getChannel(), item.getItemIndex()));
-            } catch (Exception e) {
-                ui.printMessage(new ChatItem(-1, "System", "Log", 't', e.getMessage()));
-            }
+            String[] formatted = new Gson().fromJson(itemCrypto, String[].class);
+            processMessageRequest(client, formatted[0], formatted[1]);
         });
         server.addEventListener(EDIT_MESSAGE, String.class, (SocketIOClient client, String itemCrypto, AckRequest ackRequest) -> {
-            try {
-                String itemJson = encryptionHandler.AESDecryptData(client, itemCrypto);
-                ChatItem newItem = ChatItem.fromJson(itemJson);
-                database.edit(newItem);
-                sendToClients(EDIT_MESSAGE, newItem);
-                // server.getBroadcastOperations().sendEvent(EDIT_MESSAGE, newItem);
-            } catch (Exception e) {
-                ui.printMessage(new ChatItem(-1, "System", "Log", 't', e.getMessage()));
-            }
+            String[] formatted = new Gson().fromJson(itemCrypto, String[].class);
+            processEditRequest(client, formatted[0], formatted[1]);
         });
         server.addEventListener(DELETE_MESSAGE, String.class, (SocketIOClient client, String itemCrypto, AckRequest ackRequest) -> {
-            try {
-                String itemJson = encryptionHandler.AESDecryptData(client, itemCrypto);
-                ChatItem deleteItem = ChatItem.fromJson(itemJson);
-                database.delete(deleteItem);
-                sendToClients(DELETE_MESSAGE, deleteItem);
-                // server.getBroadcastOperations().sendEvent(DELETE_MESSAGE, deleteItem);
-            } catch (Exception e) {
-                ui.printMessage(new ChatItem(-1, "System", "Log", 't', e.getMessage()));
-            }
-        });  
+            String[] formatted = new Gson().fromJson(itemCrypto, String[].class);
+            processDeleteRequest(client, formatted[0], formatted[1]);
+        });
         server.addEventListener("removeChannel", String.class, (SocketIOClient client, String itemJson, AckRequest ackRequest) -> {
-            String decrypt = encryptionHandler.AESDecryptData(client, itemJson);
-            ChatItem item = ChatItem.fromJson(decrypt);
-            database.removeChannel(item.getChannel());
-            sendToClients("removeChannel", item, false);
+            String[] formatted = new Gson().fromJson(itemJson, String[].class);
+            processRemoveChannelRequest(client, formatted[0], formatted[1]);
         });
 
         server.addEventListener("vcClient", String.class, (client, message, ackRequest) -> {
@@ -219,6 +161,128 @@ public class BaseController {
         server.addEventListener("offer", String.class, signalingServer.onOffer());
         server.addEventListener("answer", String.class, signalingServer.onAnswer());
         server.addEventListener("candidate", String.class, signalingServer.onCandidate());
+    }
+
+    private static Charset getCharset(String bit16) {
+        if (bit16.equals("16")) {
+            return StandardCharsets.UTF_16BE;
+        }
+        return StandardCharsets.UTF_8;
+    }
+
+    private static void processRemoveChannelRequest(SocketIOClient client, String itemJson, String bit16)
+            throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidAlgorithmParameterException,
+            InvalidKeyException, BadPaddingException, IllegalBlockSizeException {
+        String decrypt = encryptionHandler.AESDecryptData(client, itemJson, getCharset(bit16));
+        ChatItem item = ChatItem.fromJson(decrypt);
+        database.removeChannel(item.getChannel());
+        sendToClients("removeChannel", item, false);
+    }
+
+    private static void processDeleteRequest(SocketIOClient client, String itemCrypto, String bit16) {
+        try {
+            String itemJson = encryptionHandler.AESDecryptData(client, itemCrypto, getCharset(bit16));
+            ChatItem deleteItem = ChatItem.fromJson(itemJson);
+            database.delete(deleteItem);
+            sendToClients(DELETE_MESSAGE, deleteItem);
+            // server.getBroadcastOperations().sendEvent(DELETE_MESSAGE, deleteItem);
+        } catch (Exception e) {
+            ui.printMessage(new ChatItem(-1, "System", "Log", 't', e.getMessage()));
+        }
+    }
+
+    private static void processEditRequest(SocketIOClient client, String itemCrypto, String bit16) {
+        try {
+            String itemJson = encryptionHandler.AESDecryptData(client, itemCrypto, getCharset(bit16));
+            ChatItem newItem = ChatItem.fromJson(itemJson);
+            database.edit(newItem);
+            sendToClients(EDIT_MESSAGE, newItem);
+            // server.getBroadcastOperations().sendEvent(EDIT_MESSAGE, newItem);
+        } catch (Exception e) {
+            ui.printMessage(new ChatItem(-1, "System", "Log", 't', e.getMessage()));
+        }
+    }
+
+    private static void processMessageRequest(SocketIOClient client, String itemCrypto, String bit16) {
+        try {
+            String itemJson = encryptionHandler.AESDecryptData(client, itemCrypto, getCharset(bit16));
+            ChatItem item = ChatItem.fromJson(itemJson);
+            backlogFill(client, database.getRecents(item.getChannel(), item.getItemIndex()));
+        } catch (Exception e) {
+            ui.printMessage(new ChatItem(-1, "System", "Log", 't', e.getMessage()));
+        }
+    }
+
+    private static void processTypingPing(SocketIOClient client, String itemCrypto, String bit16) {
+        try {
+            String itemJson = encryptionHandler.AESDecryptData(client, itemCrypto, getCharset(bit16));
+            ChatItem item = ChatItem.fromJson(itemJson);
+            sendToClients(USER_TYPING, item);
+            // server.getBroadcastOperations().sendEvent(USER_TYPING, item);
+        } catch (Exception e) {
+            ui.printMessage(new ChatItem(-1, "System", "Log", 't', e.getMessage()));
+        }
+    }
+
+    private static void processImage(SocketIOClient client, String itemCrypto, String bit16) {
+        try {
+            String itemJson = encryptionHandler.AESDecryptData(client, itemCrypto, getCharset(bit16));
+            ChatItem item = ChatItem.fromJson(itemJson);
+            // byte[] bytes = new Gson().fromJson(item.getContent().toString(), byte[].class);
+            byte[] bytes = ImageHandler.decompressImageBytes((String) item.getContent());
+            ChatItem newImage = new ChatItem(database.getNextIndex(item.getChannel()), item.getUserName(), item.getChannel(), 'i', bytes);
+            database.store(newImage);
+            newImage.setContent(ImageHandler.getImageBytesBase64(newImage));
+            System.out.println("newImage");
+            sendToClients(IMAGE, newImage, true);
+        } catch (Exception e) {
+            ui.printMessage(new ChatItem(-1, "System", "Log", 't', e.getMessage()));
+            e.printStackTrace();
+        }
+    }
+
+    private static void addChatClient(SocketIOClient client, String userNameCrypto, String bit16)
+            throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidAlgorithmParameterException,
+            InvalidKeyException, BadPaddingException, IllegalBlockSizeException {
+        String userName = encryptionHandler.AESDecryptData(client, userNameCrypto, getCharset(bit16));
+        String localUsername = userHandler.getClientUsername(client);
+        if (localUsername != null) {
+            ui.printMessage(new ChatItem(-1, "System", "none", 't', localUsername + " Changed userName to " + userName));
+            sendToClients(USER_LEAVE, localUsername);
+            // server.getBroadcastOperations().sendEvent(USER_LEAVE, localUsername);
+            userHandler.removeClient(client);
+        }
+        if (!userHandler.addClient(client, userName)) {
+            client.disconnect();
+        }
+        encryptionHandler.sendToClient(client, USERNAME_SEND, userName);
+        // client.sendEvent(USERNAME_SEND, userName);
+        sendToClients(USER_JOIN, userName);
+        // server.getBroadcastOperations().sendEvent(USER_JOIN, userName);
+        ui.clientConnected(userName, client.getSessionId().toString());
+    }
+
+    private static void processMessage(SocketIOClient client, String itemJson, String bit16) {
+        try {
+            String decryptedItemJson = encryptionHandler.AESDecryptData(client, itemJson, getCharset(bit16));
+            ChatItem item = ChatItem.fromJson(decryptedItemJson);
+            // ChatItem item = ChatItem.fromJson(itemJson);
+            item.setItemIndex(database.getNextIndex(item.getChannel()));
+            item.trim();
+            database.store(item);
+            ui.printMessage(item);
+
+            sendToClients(CHAT_MESSAGE, item);
+            // server.getBroadcastOperations().sendEvent(CHAT_MESSAGE, item);
+        } catch (Exception e) {
+            ui.printMessage(new ChatItem(-1, "System", "Log", 't', e.getMessage()));
+        }
+    }
+
+    private static void processNewClientEncryption(SocketIOClient client, String publicKeyElements) {
+        String encryptedSessionKey = encryptionHandler.generateNewClientEncryption(client, publicKeyElements);
+        // encryptionHandler.sendToClient(client, "sessionKey", encryptedSessionKey);
+        client.sendEvent("sessionKey", encryptedSessionKey);
     }
 
     /**

@@ -5,6 +5,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.OutputStreamWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Hashtable;
@@ -49,7 +50,7 @@ public class BaseArrayList implements BaseDatabase {
                 e.printStackTrace();
             }
         }
-        try (FileReader reader = new FileReader(DATABASE_PATH)) {
+        try (FileReader reader = new FileReader(DATABASE_PATH, StandardCharsets.UTF_16)) {
             messageLists = GSON.fromJson(reader, new TypeToken<Hashtable<String, ArrayList<ChatItem>>>() {}.getType());
             currentItemIndexes = new Hashtable<>();
             if (messageLists == null) {
@@ -93,7 +94,7 @@ public class BaseArrayList implements BaseDatabase {
                 e.printStackTrace();
             }
         }
-        try (OutputStreamWriter writer = new OutputStreamWriter(new FileOutputStream(DATABASE_PATH))) {
+        try (OutputStreamWriter writer = new OutputStreamWriter(new FileOutputStream(DATABASE_PATH), StandardCharsets.UTF_16)) {
             GSON.toJson(messageLists, writer);
         } catch (Exception e) {
             e.printStackTrace();

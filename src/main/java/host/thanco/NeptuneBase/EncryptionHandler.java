@@ -1,6 +1,7 @@
 package host.thanco.NeptuneBase;
 
 import java.math.BigInteger;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
@@ -13,6 +14,7 @@ import java.security.spec.MGF1ParameterSpec;
 import java.security.spec.RSAPublicKeySpec;
 import java.util.Base64;
 import java.util.Hashtable;
+import java.util.OptionalInt;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
@@ -74,8 +76,7 @@ public class EncryptionHandler {
         cipher.init(Cipher.ENCRYPT_MODE, publicKey, oaepParameterSpecJCE);
 
         // byte[] unencryptedBytes = Base64.getDecoder().decode(plaintext);
-        byte[] unencryptedBytes = plaintext.getBytes();
-
+        byte[] unencryptedBytes = plaintext.getBytes(StandardCharsets.UTF_8);
         byte[] encryptedBytes = cipher.doFinal(unencryptedBytes);
         String encryptedText = Base64.getEncoder().encodeToString(encryptedBytes);
 
@@ -96,8 +97,13 @@ public class EncryptionHandler {
         return nonce;
     }
 
-    private String AESEncryptData(SocketIOClient client, String plaintext) throws NoSuchPaddingException, NoSuchAlgorithmException,
+    private String AESEncryptData(SocketIOClient client, String plaintext, Charset utf) throws NoSuchPaddingException, NoSuchAlgorithmException,
     InvalidAlgorithmParameterException, InvalidKeyException, BadPaddingException, IllegalBlockSizeException {
+        if (!clientSessionKeys.containsKey(client)) {
+            System.out.println("Weird fake not client pinged");
+            //    clientSessionKeys.remove(client);
+            return null;
+        }
         byte[] key = clientSessionKeys.get(client);
         byte[] nonce = generateNonce();
 
@@ -107,7 +113,8 @@ public class EncryptionHandler {
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         cipher.init(Cipher.ENCRYPT_MODE, secretKeySpec, gcmParameterSpec);
 
-        byte[] cipherTextWithTag = cipher.doFinal(plaintext.getBytes(StandardCharsets.UTF_8));
+        // StandardCharsets.UTF_16LE
+        byte[] cipherTextWithTag = cipher.doFinal(plaintext.getBytes(utf));
         byte[] cipherText = new byte[(cipherTextWithTag.length - 16)];
         byte[] gcmTag = new byte[16];
 
@@ -127,7 +134,7 @@ public class EncryptionHandler {
         return nonceBase64 + "%" + cipherTextBase64 + "%" + gcmTagBase64;
     }
 
-    public String AESDecryptData(SocketIOClient client, String encryptedBase64) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidAlgorithmParameterException, InvalidKeyException, BadPaddingException, IllegalBlockSizeException {
+    public String AESDecryptData(SocketIOClient client, String encryptedBase64, Charset utf) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidAlgorithmParameterException, InvalidKeyException, BadPaddingException, IllegalBlockSizeException {
         byte[] key = clientSessionKeys.get(client);
         String[] split = encryptedBase64.split("%");
 
@@ -148,8 +155,9 @@ public class EncryptionHandler {
         SecretKeySpec secretKeySpec = new SecretKeySpec(key, "AES");
         GCMParameterSpec gcmParameterSpec = new GCMParameterSpec(16 * 8, nonce);
         cipher.init(Cipher.DECRYPT_MODE, secretKeySpec, gcmParameterSpec);
-        
-        return new String(cipher.doFinal(encryptedData));
+
+        // StandardCharsets.UTF_16BE
+        return new String(cipher.doFinal(encryptedData), utf);
     }
 
     public void sendToClient(SocketIOClient client, String type, Object message) {
@@ -165,10 +173,15 @@ public class EncryptionHandler {
         } else {
             message = "";
         }
+        Charset utf = checkText(message);
+        String bit16 = utf == StandardCharsets.UTF_8 ? "8" : "16";
         try {
-            String messageCrypto = AESEncryptData(client, message);
+            String messageCrypto = AESEncryptData(client, message, utf);
+            if (messageCrypto == null) {
+                return;
+            }
             if (!withAck) {
-                client.sendEvent(type, messageCrypto);
+                client.sendEvent(type, new Object[]{messageCrypto, bit16});
                 return;
             }
             client.sendEvent(type, new AckCallback<>(Character.class, 30) {
@@ -187,15 +200,23 @@ public class EncryptionHandler {
                         public void onTimeout() {
                             System.out.println(new ChatItem(-1, "System", "none", 't', client.getSessionId() + "failed to ack image resend."));
                         };
-                    }, messageCrypto);
+                    }, new Object[]{messageCrypto, bit16});
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
                 }
-            }, messageCrypto);
+            }, new Object[]{messageCrypto, bit16});
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    private Charset checkText(String text) {
+        OptionalInt max = text.codePoints().max();
+        if (max.getAsInt() > 256) {
+            return StandardCharsets.UTF_16LE;
+        }
+        return StandardCharsets.UTF_8;
     }
 
     public void clientDisconnect(SocketIOClient client) {
