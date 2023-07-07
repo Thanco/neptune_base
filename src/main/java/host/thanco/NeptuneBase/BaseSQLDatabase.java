@@ -310,11 +310,15 @@ public class BaseSQLDatabase implements BaseDatabase {
             ResultSet rs = s.executeQuery("SELECT * FROM " + channelID + " WHERE " + (oldestMessage - recentsSize - 1) + "<itemIndex AND itemIndex<" + oldestMessage);
             items = resultSetToChatItemList(rs, channel);
             rs.close();
-            s.close();
+            int backSets = 2;
             while (items.size() < recentsSize && !items.isEmpty() && items.get(0).getItemIndex() > 1) {
-                ArrayList<ChatItem> addItems = getRecentsOnConnection(connection, channel, oldestMessage - recentsSize);
-                for (int i = items.size(), j = 0; j < addItems.size() && i <= recentsSize; i++, j++) {
-                    items.add(addItems.get(j));
+                rs = s.executeQuery("SELECT * FROM " + channelID + " WHERE " +
+                (oldestMessage - (recentsSize * backSets) - 1) + "<itemIndex AND itemIndex<" +
+                (oldestMessage - (recentsSize * (backSets - 1))));
+                ArrayList<ChatItem> addItems = resultSetToChatItemList(rs, channel);
+                rs.close();
+                for (int i = items.size(), j = addItems.size() - 1; j > 0 && i < recentsSize; i++, j--) {
+                    items.add(0, addItems.get(j));
                 }
             }
         } catch (Exception e) {

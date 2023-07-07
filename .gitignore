@@ -31,4 +31,6 @@ img/
 *.sql
 *.exe
 
+*.yml
+
 json/

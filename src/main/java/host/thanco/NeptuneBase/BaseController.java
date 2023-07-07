@@ -25,7 +25,7 @@ import com.google.gson.Gson;
 
 public class BaseController {
 
-    private static final String VERSION = "0.12.0.0";
+    private static final String VERSION = "0.12.0.1";
 
     private static final String CHAT_MESSAGE = "chatMessage";
     private static final String BACKLOG_FILL = "backlogFill";
