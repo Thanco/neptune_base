@@ -40,7 +40,7 @@ public class ChatItemCell {
             case 'i':
                 File imgFile = new File((String)chatItem.getContent());
                 Image img = new Image(imgFile.toURI().toString());
-                imgView.setImage(img);
+                imgView.setImageBytes(img);
                 break;
             default:
                 messageLbl.setText("idiot");
